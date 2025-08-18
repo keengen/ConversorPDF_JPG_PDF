@@ -24,3 +24,6 @@ Ferramenta GUI em Python para conversão entre imagens JPG e arquivos PDF, com a
 2. Execute o script: `python conversor.py`
 
 Ideal para quem precisa converter rapidamente entre esses formatos sem usar ferramentas online!
+
+<img width="695" height="647" alt="image" src="https://github.com/user-attachments/assets/208aa021-7b26-499e-80ca-2ccef46fa0ef" />
+
