@@ -4,12 +4,27 @@ import tkinter as tk
 from tkinter import filedialog, ttk, messagebox, scrolledtext
 from tkinter.ttk import Notebook
 
+# Adicione esta importação no topo do arquivo
+try:
+    from pdf2image import convert_from_path
+    PDF2IMAGE_AVAILABLE = True
+except ImportError:
+    PDF2IMAGE_AVAILABLE = False
 
 class ImageConverterApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Conversor de Imagens")
         self.root.geometry("700x600")
+        
+        # Verifica se pdf2image está disponível
+        if not PDF2IMAGE_AVAILABLE:
+            messagebox.showwarning(
+                "Aviso", 
+                "A biblioteca pdf2image não está instalada.\n"
+                "Para converter PDF para JPG, instale com:\n"
+                "pip install pdf2image"
+            )
         
         # Notebook (abas)
         self.notebook = Notebook(self.root)
@@ -91,6 +106,15 @@ class ImageConverterApp:
         # Widgets
         ttk.Label(tab, text="Conversor PDF para JPG", font=('Helvetica', 14, 'bold')).pack(pady=10)
         
+        # Aviso se pdf2image não estiver disponível
+        if not PDF2IMAGE_AVAILABLE:
+            warning_label = ttk.Label(
+                tab, 
+                text="⚠️ pdf2image não instalada - conversão PDF→JPG indisponível", 
+                foreground="red"
+            )
+            warning_label.pack(pady=5)
+        
         # Frame de seleção de modo
         mode_frame = ttk.Frame(tab)
         mode_frame.pack(pady=5)
@@ -122,7 +146,10 @@ class ImageConverterApp:
         self.pdf_progress.pack(pady=5)
         
         # Botão de conversão
-        ttk.Button(tab, text="Converter para JPG", command=self.convert_to_jpg).pack(pady=10)
+        convert_btn = ttk.Button(tab, text="Converter para JPG", command=self.convert_to_jpg)
+        if not PDF2IMAGE_AVAILABLE:
+            convert_btn.configure(state='disabled')
+        convert_btn.pack(pady=10)
         
         # Status
         self.pdf_status = ttk.Label(tab, text="Selecione os arquivos de origem e destino", foreground="gray")
@@ -373,6 +400,15 @@ class ImageConverterApp:
     
     def convert_to_jpg(self):
         """Converte PDF para JPG"""
+        if not PDF2IMAGE_AVAILABLE:
+            messagebox.showerror(
+                "Erro", 
+                "A biblioteca pdf2image não está instalada.\n"
+                "Para converter PDF para JPG, instale com:\n"
+                "pip install pdf2image"
+            )
+            return
+        
         input_path = self.pdf_input.get()
         output_path = self.jpg_output.get()
         
@@ -395,15 +431,36 @@ class ImageConverterApp:
                 self.root.update_idletasks()
                 
                 base_name = os.path.splitext(os.path.basename(input_path))[0]
-                output_file = os.path.join(output_path, f"{base_name}.jpg")
                 
                 try:
-                    images = self._pdf_to_images(input_path)
-                    if images:
+                    # Converte PDF para imagens
+                    images = convert_from_path(input_path, dpi=300)
+                    
+                    if len(images) == 1:
+                        # PDF com uma página
+                        output_file = os.path.join(output_path, f"{base_name}.jpg")
                         images[0].save(output_file, "JPEG", quality=95)
-                        self.pdf_progress['value'] = 1
                         self.pdf_status.config(text=f"Conversão concluída: {os.path.basename(output_file)}", foreground="green")
                         messagebox.showinfo("Sucesso", f"Arquivo convertido com sucesso:\n{output_file}")
+                    else:
+                        # PDF com múltiplas páginas
+                        converted_files = []
+                        for i, image in enumerate(images):
+                            output_file = os.path.join(output_path, f"{base_name}_pagina_{i+1}.jpg")
+                            image.save(output_file, "JPEG", quality=95)
+                            converted_files.append(output_file)
+                        
+                        self.pdf_status.config(
+                            text=f"Conversão concluída: {len(images)} páginas convertidas", 
+                            foreground="green"
+                        )
+                        messagebox.showinfo(
+                            "Sucesso", 
+                            f"PDF convertido com sucesso!\n{len(images)} páginas salvas em:\n{output_path}"
+                        )
+                    
+                    self.pdf_progress['value'] = 1
+                    
                 except Exception as e:
                     messagebox.showerror("Erro", f"Falha ao converter arquivo:\n{e}")
                     self.pdf_status.config(text="Erro na conversão", foreground="red")
@@ -420,31 +477,43 @@ class ImageConverterApp:
                 self.root.update_idletasks()
                 
                 success_count = 0
+                total_pages = 0
                 
                 for i, pdf_file in enumerate(pdf_files, 1):
                     try:
                         pdf_path = os.path.join(input_path, pdf_file)
                         base_name = os.path.splitext(pdf_file)[0]
-                        output_file = os.path.join(output_path, f"{base_name}.jpg")
                         
-                        images = self._pdf_to_images(pdf_path)
-                        if images:
+                        # Converte PDF para imagens
+                        images = convert_from_path(pdf_path, dpi=300)
+                        
+                        if len(images) == 1:
+                            # PDF com uma página
+                            output_file = os.path.join(output_path, f"{base_name}.jpg")
                             images[0].save(output_file, "JPEG", quality=95)
-                            success_count += 1
+                        else:
+                            # PDF com múltiplas páginas
+                            for j, image in enumerate(images):
+                                output_file = os.path.join(output_path, f"{base_name}_pagina_{j+1}.jpg")
+                                image.save(output_file, "JPEG", quality=95)
+                        
+                        success_count += 1
+                        total_pages += len(images)
                         
                         self.pdf_status.config(text=f"Convertendo {i}/{len(pdf_files)}: {pdf_file}")
                         self.pdf_progress['value'] = i
                         self.root.update_idletasks()
+                        
                     except Exception as e:
                         messagebox.showwarning("Aviso", f"Erro ao converter {pdf_file}: {e}")
                 
                 self.pdf_status.config(
-                    text=f"Conversão concluída! {success_count}/{len(pdf_files)} arquivo(s) processado(s).", 
+                    text=f"Conversão concluída! {success_count}/{len(pdf_files)} PDFs, {total_pages} páginas processadas.", 
                     foreground="green"
                 )
                 messagebox.showinfo(
                     "Sucesso", 
-                    f"Conversão concluída!\n{success_count} de {len(pdf_files)} arquivo(s) processado(s)."
+                    f"Conversão concluída!\n{success_count} de {len(pdf_files)} PDF(s) processado(s)\n{total_pages} páginas convertidas."
                 )
         
         except Exception as e:
@@ -453,24 +522,7 @@ class ImageConverterApp:
         finally:
             self.pdf_progress['value'] = 0
     
-    def _pdf_to_images(self, pdf_path):
-        """Converte um PDF em uma lista de imagens (uma por página)"""
-        try:
-            images = []
-            with Image.open(pdf_path) as img:
-                img.load()  # Carrega todas as páginas
-                
-                # Se o PDF tem múltiplas páginas, iteramos por elas
-                for page in range(img.n_frames):
-                    img.seek(page)
-                    if img.mode == 'RGBA':
-                        img = img.convert('RGB')
-                    images.append(img.copy())
-            
-            return images
-        except Exception as e:
-            messagebox.showerror("Erro", f"Falha ao processar PDF:\n{e}")
-            return None
+    # Remove o método _pdf_to_images antigo, pois não é mais necessário
 
 
 def main():
